@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
+<title>Hipoteza Biszkoptowa</title>
+<style>
+/* layout: one-screen chat. Header, scrolling thread, reply tray. Lab cards sit inline in the thread. */
+:root {
+  color-scheme: dark;
+  --bg: #0b1016;
+  --panel: #151c25;
+  --them: #232b36;
+  --me: #8a3df2;
+  --me2: #5a4cf6;
+  --fg: #f2f4f7;
+  --mute: #8d97a5;
+  --line: #2a3340;
+  --good: #4fd1a1;
+  --warn: #f2b84b;
+  --bad: #f0718a;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.35; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+.app { height: 100%; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; }
+
+.head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--them); display: grid; place-items: center; font-size: 20px; flex: none; }
+.who { min-width: 0; flex: 1; }
+.who b { display: block; font-size: 17px; }
+.who span { color: var(--mute); font-size: 13px; }
+.score { display: flex; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.score i { font-style: normal; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.score b { font-size: 15px; }
+.score .n b { color: var(--good); }
+.score .d b { color: var(--bad); }
+.score .w b { color: var(--warn); }
+
+.thread { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+.msg { max-width: 82%; padding: 10px 15px; border-radius: 22px; overflow-wrap: anywhere; }
+.msg.them { align-self: flex-start; background: var(--them); border-bottom-left-radius: 6px; }
+.msg.me { align-self: flex-end; background: linear-gradient(160deg, var(--me), var(--me2)); border-bottom-right-radius: 6px; }
+.msg.typing { color: var(--mute); letter-spacing: 3px; }
+.note { align-self: center; max-width: 90%; text-align: center; color: var(--mute); font-size: 13px; padding: 6px 0; text-wrap: balance; }
+.note b.n { color: var(--good); } .note b.d { color: var(--bad); } .note b.w { color: var(--warn); }
+.chapter { align-self: center; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); padding: 14px 0 4px; }
+
+.card { align-self: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 14px; margin: 6px 0; }
+.card h2 { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); font-weight: 600; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { font-size: 14px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { flex: 1 1 auto; background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; text-align: left; }
+.seg button[aria-pressed="true"] { border-color: var(--me); background: color-mix(in srgb, var(--me) 22%, transparent); }
+.card[data-done] button { pointer-events: none; opacity: .6; }
+.go { background: var(--fg); color: var(--bg); border: 0; border-radius: 10px; padding: 11px; font-weight: 600; }
+.cost { font-family: var(--mono); font-size: 12px; color: var(--mute); }
+.plot { width: 100%; height: auto; display: block; }
+.plot text { font-family: var(--mono); font-size: 11px; fill: var(--mute); }
+.stats { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; }
+.stats span:nth-child(odd) { color: var(--mute); }
+.hint { font-size: 13px; color: var(--mute); margin: 0; }
+
+.msg { position: relative; }
+.msg.them { cursor: pointer; }
+.msg.rx { margin-bottom: 14px; }
+.rx-pill { position: absolute; bottom: -14px; background: var(--panel); border: 2px solid var(--bg); border-radius: 999px; padding: 1px 7px; font-size: 14px; letter-spacing: 0; animation: pop .25s ease-out; }
+.msg.them .rx-pill { left: 10px; }
+.msg.me .rx-pill { right: 10px; }
+@keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .rx-pill { animation: none; } }
+.go:disabled, .seg button:disabled { opacity: .4; cursor: default; }
+.nights { display: flex; align-items: flex-end; gap: 2px; height: 110px; }
+.nights button { flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 3px 3px 0 0; background: var(--me2); opacity: .7; }
+.nights button[aria-pressed="true"] { background: var(--fg); opacity: 1; }
+.card[data-done] .nights button.full { background: var(--warn); opacity: 1; }
+.forest { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.forest button { aspect-ratio: 1.6; background: transparent; border: 1px solid var(--line); border-radius: 10px; font-size: 20px; padding: 0; }
+.log { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.log div { border-left: 2px solid var(--line); padding-left: 10px; }
+
+.tray { border-top: 1px solid var(--line); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; min-height: 60px; }
+.tray button { background: transparent; border: 1px solid var(--me); border-radius: 18px; padding: 10px 14px; text-align: left; }
+.tray button:hover { background: color-mix(in srgb, var(--me) 18%, transparent); }
+.tray .idle { color: var(--mute); font-size: 14px; padding: 8px 2px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="head">
+    <div class="avatar" aria-hidden="true">🍰</div>
+    <div class="who"><b>Pani Projektant</b><span>pisze do Ciebie, Panie Inżynierze</span></div>
+    <div class="score" aria-label="Wynik">
+      <i class="n"><b id="sn">0</b>nauka</i>
+      <i class="d"><b id="sd">0</b>dogmat</i>
+      <i class="w"><b id="sw">0</b>wiara</i>
+    </div>
+  </header>
+  <main class="thread" id="thread" aria-live="polite"></main>
+  <footer class="tray" id="tray"></footer>
+</div>
+
+<script>
+const thread = document.getElementById('thread');
+const tray = document.getElementById('tray');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wait = ms => new Promise(r => setTimeout(r, reduced ? 0 : ms));
+const fmt = x => x.toFixed(1).replace('.', ',');
+let S, eggs, lastMe;
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+function push(node) {
+  thread.appendChild(node);
+  thread.scrollTop = thread.scrollHeight;
+  return node;
+}
+function idle(text) { tray.innerHTML = ''; tray.appendChild(el('div', 'idle', text || 'Pani Projektant pisze…')); }
+
+async function them(...lines) {
+  for (const t of lines) {
+    idle();
+    const b = push(el('div', 'msg them typing', '•••'));
+    await wait(500 + Math.min(t.length * 18, 1100));
+    b.classList.remove('typing');
+    b.textContent = t;
+    b.onclick = () => { b._i = ((b._i ?? -1) + 1) % (RX.length + 1); react(b, RX[b._i]); };
+    await wait(250);
+  }
+}
+function me(t) { const b = el('div', 'msg me'); b.textContent = t; return push(b); }
+const RX = ['❤️', '😂', '😮', '🙄'];
+function react(b, emoji) {
+  let p = b.querySelector('.rx-pill');
+  if (!emoji) { if (p) p.remove(); b.classList.remove('rx'); return; }
+  if (!p) { p = el('span', 'rx-pill'); b.appendChild(p); b.classList.add('rx'); }
+  p.textContent = emoji;
+}
+function note(html) { push(el('div', 'note', html)); }
+function chapter(t) { push(el('div', 'chapter', t)); }
+
+const LABEL = { n: 'nauka', d: 'dogmat', w: 'wiara' };
+function score(k) {
+  S[k]++;
+  document.getElementById('s' + k).textContent = S[k];
+  note('<b class="' + k + '">+1 ' + LABEL[k] + '</b>');
+}
+
+function choose(opts, silent) {
+  return new Promise(resolve => {
+    tray.innerHTML = '';
+    opts.forEach(o => {
+      const b = el('button');
+      b.type = 'button';
+      b.textContent = o.t;
+      b.onclick = () => { if (!silent) lastMe = me(o.t); idle(' '); resolve(o); };
+      tray.appendChild(b);
+    });
+    thread.scrollTop = thread.scrollHeight;
+  });
+}
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+/* ---------- laboratorium ---------- */
+const FIELDS = [
+  { key: 'n', label: 'Ile biszkoptów na każdą fazę Księżyca?', opts: [[3, '3'], [10, '10'], [40, '40']] },
+  { key: 'control', label: 'Kiedy pieczesz?', opts: [[false, 'Tylko w pełnię'], [true, 'W pełnię i w nów']] },
+  { key: 'constant', label: 'Warunki pieczenia', opts: [[false, 'Jak wyjdzie, po pracy'], [true, 'Ten sam przepis, piekarnik i godzina']] },
+  { key: 'blind', label: 'Kto mierzy wysokość?', opts: [[false, 'Pani Projektant na oko, wie które są z pełni'], [true, 'Linijka, bez wiedzy o fazie']] }
+];
+
+function labCard() {
+  return new Promise(resolve => {
+    idle('Zaprojektuj eksperyment powyżej.');
+    const cfg = { n: 3, control: false, constant: false, blind: false };
+    const card = el('section', 'card');
+    card.appendChild(el('h2', null, 'Projekt eksperymentu'));
+    const cost = el('div', 'cost');
+    const upd = () => { cost.textContent = 'Koszt: ' + cfg.n * (cfg.control ? 2 : 1) * 5 + ' jajek'; };
+    FIELDS.forEach(f => {
+      const wrap = el('div', 'field');
+      wrap.appendChild(el('span', null, f.label));
+      const seg = el('div', 'seg');
+      f.opts.forEach(([val, text]) => {
+        const b = el('button');
+        b.type = 'button';
+        b.textContent = text;
+        b.setAttribute('aria-pressed', String(cfg[f.key] === val));
+        b.onclick = () => {
+          cfg[f.key] = val;
+          seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', 'false'));
+          b.setAttribute('aria-pressed', 'true');
+          upd();
+        };
+        seg.appendChild(b);
+      });
+      wrap.appendChild(seg);
+      card.appendChild(wrap);
+    });
+    upd();
+    card.appendChild(cost);
+    const go = el('button', 'go', 'Piecz');
+    go.type = 'button';
+    go.onclick = () => { card.setAttribute('data-done', ''); resolve(cfg); };
+    card.appendChild(go);
+    push(card);
+  });
+}
+
+function gauss() {
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+const mean = a => a.reduce((s, x) => s + x, 0) / a.length;
+const variance = a => { const m = mean(a); return a.reduce((s, x) => s + (x - m) * (x - m), 0) / (a.length - 1); };
+
+// Prawdziwy wpływ pełni wynosi zero. Różnice biorą się tylko z szumu i z błędów w projekcie.
+function bake(cfg) {
+  const sd = cfg.constant ? 0.8 : 1.1;
+  const bias = (cfg.constant ? 0 : -0.7) + (cfg.blind ? 0 : -0.5);
+  const draw = shift => Array.from({ length: cfg.n }, () => Math.max(3.2, Math.min(10.8, 7 + shift + sd * gauss())));
+  const full = draw(bias);
+  const nov = cfg.control ? draw(0) : null;
+  eggs += cfg.n * (cfg.control ? 2 : 1) * 5;
+  const r = { full, nov, mFull: mean(full) };
+  if (nov) {
+    r.mNov = mean(nov);
+    r.diff = r.mFull - r.mNov;
+    r.noise = 2 * Math.sqrt(variance(full) / cfg.n + variance(nov) / cfg.n);
+  }
+  return r;
+}
+
+function resultCard(r) {
+  const W = 320, L = 48, R = 12, x = v => L + (v - 3) / 8 * (W - L - R);
+  const rows = [['pełnia', r.full, r.mFull, 'var(--warn)']];
+  if (r.nov) rows.push(['nów', r.nov, r.mNov, 'var(--me2)']);
+  const H = 28 + rows.length * 34;
+  let s = '<svg class="plot" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Wysokość biszkoptów w centymetrach">';
+  for (let t = 3; t <= 11; t += 2) {
+    s += '<line x1="' + x(t) + '" y1="6" x2="' + x(t) + '" y2="' + (H - 20) + '" stroke="var(--line)" stroke-width="1"/>';
+    s += '<text x="' + x(t) + '" y="' + (H - 6) + '" text-anchor="middle">' + t + ' cm</text>';
+  }
+  rows.forEach(([name, data, m, col], i) => {
+    const y = 22 + i * 34;
+    s += '<text x="0" y="' + (y + 4) + '">' + name + '</text>';
+    data.forEach((v, j) => {
+      s += '<circle cx="' + x(v).toFixed(1) + '" cy="' + (y + ((j * 7) % 13) - 6) + '" r="3" fill="' + col + '" fill-opacity=".55"/>';
+    });
+    s += '<line x1="' + x(m) + '" y1="' + (y - 12) + '" x2="' + x(m) + '" y2="' + (y + 12) + '" stroke="var(--fg)" stroke-width="2"/>';
+  });
+  s += '</svg>';
+  let st = '<div class="stats"><span>średnia w pełnię</span><span>' + fmt(r.mFull) + ' cm</span>';
+  if (r.nov) {
+    st += '<span>średnia w nów</span><span>' + fmt(r.mNov) + ' cm</span>';
+    st += '<span>różnica</span><span>' + (r.diff > 0 ? '+' : '−') + fmt(Math.abs(r.diff)) + ' cm</span>';
+    st += '<span>szum pomiaru</span><span>±' + fmt(r.noise) + ' cm</span>';
+  } else {
+    st += '<span>średnia w nów</span><span>brak danych</span>';
+  }
+  st += '</div>';
+  const hint = r.nov
+    ? 'Różnica mniejsza niż szum mogła wyjść przypadkiem.'
+    : 'Jest tylko jedna grupa, więc nie ma różnicy do policzenia.';
+  push(el('section', 'card', '<h2>Wyniki</h2>' + s + st + '<p class="hint">' + hint + '</p>'));
+}
+
+async function lab() {
+  while (true) {
+    const cfg = await labCard();
+    idle('Pieczenie…');
+    await wait(900);
+    const r = bake(cfg);
+    resultCard(r);
+    const flaws = [];
+    if (!cfg.control) flaws.push('Piekłeś tylko w pełnię. Z czym to porównać?');
+    if (!cfg.constant) flaws.push('Raz piekłeś rano, raz po pracy i co chwilę zaglądałeś do piekarnika. To nie Księżyc, to ty.');
+    if (!cfg.blind) flaws.push('Mierzyłam ja i wiedziałam, które są z pełni. Mogłam naciągać 🙈');
+    if (cfg.n < 10) flaws.push('Trzy biszkopty? Jeden zakalec i cały wynik się odwraca.');
+    const clean = !flaws.length && Math.abs(r.diff) < r.noise;
+    if (!flaws.length && !clean) flaws.push('Tym razem różnica wyszła większa niż szum. Raz na jakiś czas tak wychodzi przypadkiem. Trzeba powtórzyć.');
+
+    const v = await choose([
+      { t: 'Obalone. Pełnia nie ma wpływu.', k: 'none' },
+      { t: 'Potwierdzone. Pełnia szkodzi biszkoptom.', k: 'yes' },
+      { t: 'Za mało, żeby cokolwiek orzec.', k: 'more' }
+    ]);
+
+    if (clean && v.k === 'none') {
+      score('n');
+      await them('No dobra. ' + cfg.n * 2 + ' biszkoptów i żadnej różnicy.', 'Ale w pełnię i tak nie piekę 😌');
+      return;
+    }
+    if (clean && v.k === 'more') {
+      await them('Tyle biszkoptów, zero różnicy, a ty dalej nie wiesz? Kiedyś trzeba coś powiedzieć 😅');
+      return;
+    }
+    if (clean && v.k === 'yes') {
+      score('w');
+      await them('Chwila. Różnica jest mniejsza niż szum, sam mi to tłumaczyłeś.', 'Nawet ja widzę, że tu nic nie ma 😂');
+      return;
+    }
+    if (v.k === 'more') {
+      score('n');
+      await them('O, sam to widzisz.', ...flaws);
+    } else {
+      score(v.k === 'none' ? 'd' : 'w');
+      await them(v.k === 'none' ? 'Obalone? Na takim eksperymencie?' : 'Miło, że się zgadzasz, ale nawet ja bym tego nie uznała.', ...flaws);
+    }
+    await choose([{ t: 'Poprawiam eksperyment.' }]);
+  }
+}
+
+/* ---------- levele sprawdzające ---------- */
+function card(title) {
+  const c = el('section', 'card');
+  c.appendChild(el('h2', null, title));
+  return c;
+}
+
+function pickCard(title, label, opts) {
+  return new Promise(resolve => {
+    const c = card(title);
+    const wrap = el('div', 'field');
+    wrap.appendChild(el('span', null, label));
+    const seg = el('div', 'seg');
+    opts.forEach(o => {
+      const b = el('button');
+      b.type = 'button';
+      b.textContent = o.t;
+      b.setAttribute('aria-pressed', 'false');
+      b.onclick = () => { b.setAttribute('aria-pressed', 'true'); c.setAttribute('data-done', ''); resolve(o); };
+      seg.appendChild(b);
+    });
+    wrap.appendChild(seg);
+    c.appendChild(wrap);
+    push(c);
+  });
+}
+
+async function levelBeza() {
+  while (true) {
+    idle('Wybierz, co porównujesz.');
+    const pick = await pickCard('Plan pieczenia bezy', 'Które dwa wypieki porównasz?', shuffle([
+      { t: 'Dwa suche dni, ten sam przepis', k: 'same' },
+      { t: 'Suchy dzień i deszczowy dzień, ten sam przepis', k: 'ok' },
+      { t: 'Suchy dzień z przepisem babci, deszczowy z przepisem z TikToka', k: 'two' }
+    ]));
+    if (pick.k === 'ok') break;
+    await them(pick.k === 'same'
+      ? 'Dwa suche dni? To o deszczu dalej nic nie wiesz 😂'
+      : 'Zmieniłeś pogodę i przepis naraz. To skąd wiesz, co zepsuło bezę?');
+  }
+  idle('Pieczenie…');
+  await wait(900);
+  push(el('section', 'card', '<h2>Wyniki</h2><div class="stats">'
+    + '<span>suchy dzień, wilgotność 40%</span><span>chrupiąca, 6,1 cm</span>'
+    + '<span>deszczowy dzień, wilgotność 90%</span><span>lepka, 4,3 cm</span></div>'));
+  await wait(500);
+}
+
+function levelPorody() {
+  return new Promise(resolve => {
+    idle('Wskaż na grafiku noc z pełnią.');
+    const data = Array.from({ length: 30 }, () => Math.max(4, Math.min(20, Math.round(12 + 3 * gauss()))));
+    const full = Math.floor(Math.random() * 30);
+    const c = card('Porody na oddziale, 30 nocy');
+    const row = el('div', 'nights');
+    const info = el('div', 'cost', 'Stuknij słupek, żeby wybrać noc.');
+    const go = el('button', 'go', 'To była pełnia');
+    go.type = 'button';
+    go.disabled = true;
+    let sel = -1;
+    const bars = data.map((v, i) => {
+      const b = el('button');
+      b.type = 'button';
+      b.style.height = (v / 20 * 100) + '%';
+      b.setAttribute('aria-label', 'Noc ' + (i + 1) + ', porodów: ' + v);
+      b.setAttribute('aria-pressed', 'false');
+      b.onclick = () => {
+        sel = i;
+        bars.forEach(x => x.setAttribute('aria-pressed', 'false'));
+        b.setAttribute('aria-pressed', 'true');
+        info.textContent = 'Noc ' + (i + 1) + ': ' + v + ' porodów';
+        go.disabled = false;
+      };
+      row.appendChild(b);
+      return b;
+    });
+    go.onclick = async () => {
+      c.setAttribute('data-done', '');
+      bars[full].classList.add('full');
+      const rest = mean(data.filter((_, i) => i !== full));
+      info.textContent = 'Pełnia: noc ' + (full + 1) + ', ' + data[full] + ' porodów. Średnia z pozostałych nocy: ' + fmt(rest) + '.';
+      await them(sel === full
+        ? 'Trafiłeś. Przy 30 nocach czasem się uda 😏'
+        : 'Pudło! Pełnia była w noc ' + (full + 1) + '. Niczym się nie wyróżnia.');
+      resolve();
+    };
+    c.append(row, info, go);
+    push(c);
+  });
+}
+
+function levelMerkury() {
+  return new Promise(resolve => {
+    idle('Sprawdź wszystkie cztery wyniki.');
+    const cases = [
+      ['Retrogradacja, telefon się zawiesza', 'No mówiłam. Merkury.'],
+      ['Retrogradacja, telefon działa', 'Bo go wczoraj ładowałam przy kryształku.'],
+      ['Brak retrogradacji, telefon się zawiesza', 'To cień retrogradacji. Trzyma jeszcze dwa tygodnie po.'],
+      ['Brak retrogradacji, telefon działa', 'No bo nie ma retrogradacji. Pasuje!']
+    ];
+    const c = card('Test Merkurego');
+    const wrap = el('div', 'field');
+    wrap.appendChild(el('span', null, 'Znajdź wynik, który przekona Panią Projektant, że to nie Merkury.'));
+    const seg = el('div', 'seg');
+    const log = el('div', 'log');
+    let left = cases.length;
+    cases.forEach(([t, excuse]) => {
+      const b = el('button');
+      b.type = 'button';
+      b.textContent = t;
+      b.setAttribute('aria-pressed', 'false');
+      b.onclick = async () => {
+        if (b.getAttribute('aria-pressed') === 'true') return;
+        b.setAttribute('aria-pressed', 'true');
+        const line = el('div');
+        line.textContent = 'Pani Projektant: ' + excuse;
+        log.appendChild(line);
+        thread.scrollTop = thread.scrollHeight;
+        if (--left === 0) {
+          c.setAttribute('data-done', '');
+          c.appendChild(el('p', 'hint', 'Żaden wynik jej nie przekonał.'));
+          await wait(700);
+          resolve();
+        }
+      };
+      seg.appendChild(b);
+    });
+    wrap.appendChild(seg);
+    c.append(wrap, log);
+    push(c);
+  });
+}
+
+function levelLas() {
+  return new Promise(resolve => {
+    idle('Przeszukaj las.');
+    const finds = [
+      ['🐴', 'Koń. Bez rogu.'],
+      ['🦏', 'Nosorożec. Róg jest, ale to nie to.'],
+      ['🐐', 'Koza. Dwa rogi, o jeden za dużo.'],
+      ['🍰', 'Biszkopt. Wyrośnięty. W środku lasu.'],
+      ['🌕', 'Pełnia. Biszkopt obok nie opadł.'],
+      ['🦌', 'Jeleń. Poroże się nie liczy.'],
+      ['🍄', 'Grzyb. Po nim jednorożce widać częściej.'],
+      ['👣', 'Ślady kopyt. Albo krowa.'],
+      ['🌈', 'Tęcza. Poszlaka, nie dowód.'],
+      ['🦔', 'Jeż. Dużo rogów, ale małych.'],
+      ['🥚', 'Jajka. Zostały po eksperymencie z biszkoptem.'],
+      ['📏', 'Twoja linijka od biszkoptów.'],
+      ['🦉', 'Sowa. Też nic nie widziała.'],
+      ['🐎', 'Drugi koń. Dalej bez rogu.'],
+      ['🪵', 'Pień.'],
+      ['🧁', 'Babeczka. Jednorożec by ją zjadł, a leży.']
+    ];
+    const pool = shuffle(finds);
+    const c = card('Las, 16 pól');
+    const grid = el('div', 'forest');
+    const info = el('div', 'cost', 'Przeszukane: 0 z 16. Jednorożców: 0.');
+    const go = el('button', 'go', 'Kończę szukanie');
+    go.type = 'button';
+    go.disabled = true;
+    let n = 0;
+    pool.forEach(f => {
+      const b = el('button');
+      b.type = 'button';
+      b.textContent = '🌲';
+      b.setAttribute('aria-label', 'Nieprzeszukane pole');
+      b.onclick = () => {
+        if (b.dataset.open) return;
+        b.dataset.open = '1';
+        b.textContent = f[0];
+        b.setAttribute('aria-label', 'Przeszukane, brak jednorożca');
+        n++;
+        info.textContent = f[1] + ' Przeszukane: ' + n + ' z 16. Jednorożców: 0.';
+        if (n >= 6) go.disabled = false;
+      };
+      grid.appendChild(b);
+    });
+    go.onclick = async () => {
+      c.setAttribute('data-done', '');
+      await them(n < 16
+        ? 'Zero jednorożców. A te ' + (16 - n) + ' nieprzeszukanych pól? 😏'
+        : 'Cały las i nic. Ale są jeszcze inne lasy 😏',
+        'Może jednorożce po prostu nie wychodzą w pełnię. Jak biszkopty.',
+        'To jak, istnieją czy nie?');
+      resolve();
+    };
+    c.append(grid, info, go);
+    push(c);
+  });
+}
+
+function levelFiltr() {
+  return new Promise(resolve => {
+    idle('Zdecyduj o każdej hipotezie.');
+    const H = shuffle([
+      { t: 'Kamienie czasem spadają z nieba.', T: true, why: 'Meteoryty. W XVIII wieku uczeni to wyśmiewali.' },
+      { t: 'Wrzody żołądka wywołuje bakteria.', T: true, why: 'Wyśmiewane przez lata, Nobel w 2005 roku.' },
+      { t: 'Kontynenty się przesuwają.', T: true, why: 'Wegenera wyśmiano. Rację przyznano mu po śmierci.' },
+      { t: 'Lekarz, który umyje ręce, ratuje rodzące.', T: true, why: 'Semmelweis. Koledzy lekarze go odrzucili.' },
+      { t: 'Czarny kot przynosi pecha.', T: false },
+      { t: 'Woda pamięta, co w niej rozpuszczono.', T: false },
+      { t: 'Pokrojona cebula w pokoju wyciąga wirusy.', T: false },
+      { t: 'Podkowa nad drzwiami przynosi szczęście.', T: false },
+      { t: 'Trzynastka przynosi pecha.', T: false },
+      { t: 'Gorączkę leczy się upuszczaniem krwi.', T: false }
+    ]);
+    let budget = 4, i = 0;
+    const res = { checked: [], rejected: [], open: [] };
+    const c = card('10 hipotez, czas na 4');
+    const q = el('div');
+    q.style.fontSize = '17px';
+    const info = el('div', 'cost');
+    const seg = el('div', 'seg');
+    const mk = (t, kind) => {
+      const b = el('button');
+      b.type = 'button';
+      b.textContent = t;
+      b.onclick = () => act(kind);
+      seg.appendChild(b);
+      return b;
+    };
+    const bCheck = mk('Sprawdzam', 'checked');
+    mk('Odrzucam na starcie', 'rejected');
+    mk('Nie wykluczam, odkładam', 'open');
+    function show() {
+      q.textContent = '„' + H[i].t + '”';
+      info.textContent = 'Hipoteza ' + (i + 1) + ' z ' + H.length + '. Zostało sprawdzeń: ' + budget + '.';
+      bCheck.disabled = budget === 0;
+    }
+    function act(kind) {
+      if (kind === 'checked') budget--;
+      res[kind].push(H[i]);
+      i++;
+      if (i < H.length) show(); else done();
+    }
+    async function done() {
+      const found = res.checked.filter(h => h.T);
+      const lost = res.rejected.filter(h => h.T);
+      q.remove(); seg.remove(); info.remove();
+      c.setAttribute('data-done', '');
+      c.appendChild(el('div', 'stats',
+        '<span>zysk: sprawdzone i prawdziwe</span><span>' + found.length + '</span>'
+        + '<span>sprawdzone i fałszywe</span><span>' + (res.checked.length - found.length) + '</span>'
+        + '<span>strata: prawdziwe odrzucone na starcie</span><span>' + lost.length + '</span>'
+        + '<span>odłożone bez odpowiedzi</span><span>' + res.open.length + '</span>'));
+      if (lost.length) {
+        const log = el('div', 'log');
+        lost.forEach(h => { const d = el('div'); d.textContent = '„' + h.t + '” ' + h.why; log.appendChild(d); });
+        c.appendChild(log);
+      }
+      thread.scrollTop = thread.scrollHeight;
+      const lines = [];
+      lines.push(lost.length
+        ? 'Odrzuciłeś na starcie ' + lost.length + ' z 4 prawdziwych. To byli ci wizjonerzy 😏'
+        : 'Żadnej prawdziwej nie odrzuciłeś na starcie. Szacun.');
+      if (res.open.length > 3) lines.push('I ' + res.open.length + ' odłożonych. Widzisz, da się żyć w niepewności 😌');
+      lines.push('To jaki ty masz zysk i stratę?');
+      await them(...lines);
+      resolve();
+    }
+    c.append(q, info, seg);
+    show();
+    push(c);
+  });
+}
+
+/* ---------- rundy ---------- */
+const RXK = { n: '🤔', d: '🙄', w: '❤️' };
+async function ameliaReacts(o) {
+  await wait(450);
+  react(lastMe, o.rx || RXK[o.k]);
+  await wait(300);
+}
+
+const ROUNDS = [
+  {
+    title: 'Beza',
+    intro: ['Dobra, biszkopt ci daruję 😌', 'Ale beza w deszcz NIGDY nie wychodzi. Tego mi nie obalisz.'],
+    opts: [
+      { k: 'n', rx: '👍', t: 'Sprawdzam. Upiekę i zobaczymy.',
+        reply: ['Proszę bardzo. Ale ja wiem, jak będzie 😏'] },
+      { k: 'd', t: 'Bzdura, tak samo jak z biszkoptem.',
+        reply: ['Aha, czyli tym razem nie sprawdzasz? 🙃'] },
+      { k: 'w', rx: '😮', t: 'Skoro tak mówisz, to pewnie tak jest.',
+        reply: ['Ooo, nagle mi wierzysz? A gdzie metoda naukowa? 😂'] }
+    ],
+    level: levelBeza,
+    note: 'Cukier chłonie wilgoć z powietrza, więc w deszczowy dzień beza robi się lepka i opada.',
+    outro: ['HA! 1:1 🎉', 'Nie każdy przesąd z kuchni to bzdura.']
+  },
+  {
+    title: 'Porodówka',
+    intro: ['Moja ciocia położna mówi, że w pełnię zawsze jest sajgon na porodówce 👶'],
+    opts: [
+      { k: 'n', t: 'Zajrzyjmy do danych z porodówki, nie do wspomnień cioci.',
+        reply: ['Mam grafik z jej oddziału z całego miesiąca. Zgadnij, która noc była pełnią.'] },
+      { k: 'd', t: 'Ciocia sobie wymyśliła.',
+        reply: ['Ona pracuje tam 20 lat, a ty ani dnia. Skąd wiesz?', 'Masz tu jej grafik z całego miesiąca. Pokaż mi pełnię.'] },
+      { k: 'w', t: 'Położna chyba wie najlepiej.',
+        reply: ['No raczej!', 'To pewnie od razu pokażesz mi pełnię na jej grafiku 😏'] }
+    ],
+    level: levelPorody,
+    note: 'Duże analizy urodzeń nie pokazują więcej porodów w pełnię. Ciężki dyżur w pełnię się pamięta, ciężkiego dyżuru w zwykły wtorek już nie.',
+    outro: ['Hmm. Faktycznie nikt nie mówi „ale sajgon, a to dopiero pierwsza kwadra”.']
+  },
+  {
+    title: 'Merkury',
+    intro: ['Telefon mi się zawiesił. Merkury w retrogradacji, wiadomo 🪐'],
+    opts: [
+      { k: 'n', t: 'A co musiałoby się stać, żebyś uznała, że to nie Merkury?',
+        reply: ['Dobre pytanie. Dawaj przykłady, powiem ci.'] },
+      { k: 'd', t: 'Udowodnię ci eksperymentem, że to bzdura.',
+        reply: ['Powodzenia 😇 Dawaj wyniki, zobaczymy.'] },
+      { k: 'w', rx: '😂', t: 'Mój laptop też dziś muli. Coś w tym jest.',
+        reply: ['MÓWIĘ CI.', 'Ale sprawdź sam, co ci szkodzi.'] }
+    ],
+    level: levelMerkury,
+    note: 'Hipoteza, która pasuje do każdego wyniku, nic nie mówi. Nie da się jej ani potwierdzić, ani obalić.',
+    outro: ['Czyli nie mogę przegrać? Podoba mi się 😇']
+  },
+  {
+    title: 'Filtr',
+    levelFirst: true,
+    intro: ['Mówisz, że mamy ograniczony czas i trzeba filtrować, co się naprawdę liczy.', 'To masz 10 hipotez i czas na sprawdzenie 4. Pokaż ten swój filtr.'],
+    opts: [
+      { k: 'n', rx: '👍', t: 'Sprawdzam to, co ma na mnie wpływ. Reszty nie skreślam, tylko odkładam.',
+        reply: ['Czyli można nie wierzyć i nie odrzucać naraz.', 'Ok git.'] },
+      { k: 'd', t: 'Co nie ma logicznego sensu, odrzucam na starcie. Raz na jakiś czas się pomylę i to akceptuję.',
+        reply: ['Zrozumiałe podejście.', 'Ale ja mogę być tym nieprawdopodobnym wizjonerem 😌'],
+        note: 'Filtr oszczędza czas. Jego ceną są wizjonerzy odrzuceni razem z bzdurami.' },
+      { k: 'w', rx: '😮', t: 'Dopóki nie sprawdzę wszystkiego, niczego nie wykluczam i wszystko biorę pod uwagę.',
+        reply: ['A nie boisz się, że w głowie narośnie ci masa nieprawdziwych przekonań? 😏'],
+        note: 'Nie wykluczać to co innego niż wierzyć. Bez filtra nie starczy życia na sprawdzanie.' }
+    ],
+    level: levelFiltr
+  },
+  {
+    title: 'Jednorożce',
+    levelFirst: true,
+    intro: ['Ostatnie pytanie.', 'Jednorożce istnieją? 🦄', 'Zanim odpowiesz: biszkopt dostał od ciebie piekarnik, linijkę i grupę kontrolną.', 'Jednorożcowi też się coś należy. Masz tu las, przeszukaj.'],
+    opts: [
+      { k: 'n', rx: '🤝', t: 'Nikt żadnego nie pokazał, więc nie zakładam, że są. Pokaż jednego, zmienię zdanie. Biszkopt miał te same warunki.',
+        reply: ['Czyli jednorożec i biszkopt dostają tę samą linijkę.', 'Okej, to uczciwe.', 'Chociaż na rocznicę rodziców jednorożec zrobiłby większe wrażenie 🦄'] },
+      { k: 'd', rx: '😂', t: 'Nie. To wymysł ludzkiej wyobraźni i koniec tematu.',
+        reply: ['To czemu jednorożce skreślasz, a biszkopty nie? 😂', 'Biszkopt dostał eksperyment z grupą kontrolną. Jednorożec dostał „koniec tematu”.', 'Gdzie jest moje 40 jednorożców w pełnię i 40 w nów?'] },
+      { k: 'd', rx: '😂', t: 'Jasne, że istnieją. Jeden zjadł biszkopt i dlatego ten opadł. Sprawa zamknięta.',
+        reply: ['To jest najlepsza hipoteza dzisiaj 😂', 'Tłumaczy biszkopt, pełnię i brak jednorożca w lesie naraz.', 'Szkoda, że niesprawdzalna. Sam byś ją odrzucił na starcie.'],
+        note: 'Sarkazm to nie eksperyment. Hipoteza, która tłumaczy wszystko, niczego nie tłumaczy.' },
+      { k: 'w', rx: '🦄', t: 'Dopóki nikt nie sprawdził całego świata, to może są.',
+        reply: ['Ooo, czyli jednak!', 'Pewnie chowają się w pełnię. Razem z wyrośniętymi biszkoptami 🦄🍰'],
+        note: 'Brak dowodów nie jest powodem, żeby wierzyć. Dowód ma przynieść ten, kto twierdzi.' }
+    ],
+    level: levelLas
+  }
+];
+
+async function round(r, i) {
+  chapter('Level ' + (i + 2) + ' · ' + r.title);
+  await them(...r.intro);
+  if (r.levelFirst) await r.level();
+  const o = await choose(shuffle(r.opts));
+  await ameliaReacts(o);
+  score(o.k);
+  await them(...o.reply);
+  if (!r.levelFirst) {
+    if (o.k !== 'n') await choose([{ t: 'Dobra, sprawdzam.' }]);
+    await r.level();
+    note(r.note);
+    await them(...r.outro);
+  } else if (o.note) note(o.note);
+  await wait(400);
+}
+
+/* ---------- przebieg gry ---------- */
+async function start() {
+  S = { n: 0, d: 0, w: 0 };
+  eggs = 0;
+  thread.innerHTML = '';
+  ['n', 'd', 'w'].forEach(k => { document.getElementById('s' + k).textContent = 0; });
+
+  chapter('Level 1 · Biszkopt');
+  await them('Hej, nie piecz dziś tego biszkoptu na rocznicę rodziców.', 'Jest pełnia. W pełnię biszkopt ZAWSZE opada 🌕');
+  note('Stuknij wiadomość Pani Projektant, żeby na nią zareagować.');
+  const o = await choose(shuffle([
+    { k: 'n', t: 'Pełnia to tylko oświetlenie. Księżyc jest tak samo daleko i ciągnie tak samo jak w nów.',
+      reply: ['Hmm. Czyli w nów też powinien opadać?', 'Ale mojej babci opadł. Trzy razy!'] },
+    { k: 'd', rx: '😂', t: 'Lodówka przyciąga biszkopt mocniej niż Księżyc 😂',
+      reply: ['Sprawdziłam. Księżyc ciągnie kilka tysięcy razy mocniej niż lodówka z metra.', 'Pan od metody naukowej zmyśla fakty? 😂'] },
+    { k: 'd', t: 'Bzdura, szkoda gadać.',
+      reply: ['Aha, czyli nie wiesz, tylko zakładasz 🙃'] },
+    { k: 'w', t: 'O kurczę, to upiekę jutro.',
+      reply: ['Widzisz! Babcia zawsze mówiła.'] }
+  ]));
+  await ameliaReacts(o);
+  score(o.k);
+  await them(...o.reply);
+  await choose([{ t: 'Sprawdzę to. I mam nadzieję, że hipoteza biszkoptowa nie zostanie udowodniona 😂' }]);
+  await wait(450);
+  react(lastMe, '❤️');
+  await them('Mam ochotę ci zrobić na złość 😂', 'Pieczenie biszkoptu to coś osobistego.', 'Piekarnik masz, jajka kup.');
+  await lab();
+  note('Zużyte jajka: ' + eggs);
+
+  for (let i = 0; i < ROUNDS.length; i++) await round(ROUNDS[i], i);
+
+  chapter('Werdykt');
+  let title, text;
+  if (S.n >= 6 && S.d + S.w <= 1) {
+    title = 'Naukowiec';
+    text = 'Te same zasady dla biszkoptu, bezy i jednorożca. Pani Projektant przysłała ci biszkopt upieczony w pełnię. Wyszedł. Jednorożca nie dołączyła.';
+  } else if (S.d > S.w) {
+    title = 'Dogmatyk';
+    text = 'Skreślasz szybciej, niż sprawdzasz. Czasem trafiasz, ale przez przypadek. Pani Projektant przestała piec bezy przy tobie.';
+  } else if (S.w > S.d) {
+    title = 'Łatwowierny';
+    text = 'Wierzysz temu, kto mówi pewniej. Merkury ma u ciebie dobrą prasę.';
+  } else {
+    title = 'Inżynier w rozkroku';
+    text = 'Raz sprawdzasz, raz skreślasz, raz wierzysz. Zasady zmieniasz zależnie od tematu, a Pani Projektant to zauważyła.';
+  }
+  push(el('section', 'card', '<h2>Twój wynik</h2><div style="font-size:22px;font-weight:700">' + title + '</div><p class="hint" style="font-size:15px;color:var(--fg)">' + text + '</p><div class="stats"><span>nauka</span><span>' + S.n + '</span><span>dogmat</span><span>' + S.d + '</span><span>wiara</span><span>' + S.w + '</span><span>jajka</span><span>' + eggs + '</span></div>'));
+  await them('W takich drobnych rozmowach widać różnicę między moim podejściem a twoim 😂', 'Ale udało się wymienić poglądy.', 'Bez rozlewu krwi 😂');
+  await choose([{ t: 'Zagraj jeszcze raz' }], true);
+  start();
+}
+start();
+</script>
+</body>
+</html>
